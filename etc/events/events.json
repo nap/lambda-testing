@@ -1,0 +1,38 @@
+[
+    {
+        "Source": "custom.cli",
+        "EventBusName": "lambda-testing",
+        "DetailType": "coordinate",
+        "Detail": "{\"coordinate\": {\"x\": \"1\", \"y\": \"1\"}, \"type\": \"persist\"}"
+    },
+    {
+        "Source": "custom.cli",
+        "EventBusName": "lambda-testing",
+        "DetailType": "coordinate",
+        "Detail": "{\"coordinate\": {\"x\": \"2\", \"y\": \"2\"}, \"type\": \"noop\"}"
+    },
+    {
+        "Source": "custom.cli",
+        "EventBusName": "lambda-testing",
+        "DetailType": "coordinate",
+        "Detail": "{\"coordinate\": {\"x\": \"7\", \"y\": \"7\"}}"
+    },
+    {
+        "Source": "custom.cli",
+        "EventBusName": "lambda-testing",
+        "DetailType": "coordinate",
+        "Detail": "{\"coordinate\": {\"x\": \"3\", \"y\": \"3\"}, \"type\": \"persist\"}"
+    },
+    {
+        "Source": "custom.cli",
+        "EventBusName": "lambda-testing",
+        "DetailType": "coordinate",
+        "Detail": "{\"coordinate\": {\"x\": \"4\", \"y\": \"4\"}, \"type\": \"noop\"}"
+    },
+    {
+        "Source": "custom.cli",
+        "EventBusName": "lambda-testing",
+        "DetailType": "coordinate",
+        "Detail": "{\"coordinate\": {\"x\": \"5\", \"y\": \"5\"}, \"type\": \"persist\"}"
+    }
+]

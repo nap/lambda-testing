@@ -1,0 +1,300 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lambda-example"
+dynamic = ["version"]
+description = "Simple example of using AWS Eventbridge with a Lambda to processes event and storing them. Everything testable locally."
+readme = { file = "README.md", content-type = "text/markdown" }
+license = { text = "Apache-2.0" }
+requires-python = ">= 3.10"
+keywords = [
+  "lambda",
+  "aws",
+  "eventbridge",
+  "event",
+  "serverless",
+  "localstack",
+  "testing",
+]
+authors = [
+  { name = "Jean-Bernard Ratte", email = "jean.bernard.ratte@unary.ca" },
+]
+maintainers = [
+  { name = "Jean-Bernard Ratte", email = "jean.bernard.ratte@unary.ca" },
+]
+classifiers = [
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+]
+dependencies = [
+  "boto3",
+  "boto3-stubs",
+  "loguru",
+  "mypy_boto3_dynamodb",
+]
+
+[project.optional-dependencies]
+tools = [
+  "hatch",
+  "localstack",
+  "awscliv2",
+  "awscli-local",
+]
+testing = [
+  "coverage[toml]",
+  "pyright",
+  "pytest",
+  "ruff",
+]
+
+[project.urls]
+Documentation = "https://github.com/nap/lambda-example#readme"
+Issues = "https://github.com/nap/lambda-example/issues"
+Source = "https://github.com/nap/lambda-example"
+
+[tool.hatch.version]
+path = "calculation/__about__.py"
+
+[tool.hatch.build]
+ignore-vcs = true
+exclude = [".*", "*.sh"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["lambda-example"]
+
+[tool.hatch.envs.default]
+platforms = ["macos"]
+python = "3.11"
+dependencies = [
+  "lambda-example[testing,tools]",
+]
+
+[tool.hatch.envs.default.scripts]
+start = ["localstack start -d"]
+stop = ["clean", "localstack stop"]
+status = [
+  "localstack status",
+  "localstack status services",
+]
+refresh = [
+  "clean",
+  "deadletter",
+  "lambda",
+  "eventbridge",
+  "dynamodb",
+]
+clean = [
+  "rm -vRf dist .*_cache .coverage",
+  "- awslocal lambda delete-function --function-name lambda-testing",
+  "- awslocal sqs delete-queue --queue-url http://sqs.{env:AWS_DEFAULT_REGION}.{env:LOCALSTACK_HOST}/000000000000/lambda-testing-dlq",
+  "- awslocal events remove-targets --rule lambda-testing-event-rule --event-bus-name lambda-testing --ids lambda-testing-event-rule-1",
+  "- awslocal events delete-rule --name lambda-testing-event-rule --event-bus-name lambda-testing",
+  "- awslocal events delete-event-bus --name lambda-testing",
+  "- awslocal dynamodb delete-table --table-name Distance",
+]
+deadletter = [
+  "awslocal sqs create-queue --queue-name lambda-testing-dlq",
+]
+relambda = [
+  "awslocal lambda delete-function --function-name lambda-testing",
+  "lambda",
+  "sleep 5",
+]
+lambda = [
+  "./package.sh",
+  """
+  awslocal lambda create-function \
+      --function-name lambda-testing \
+      --role arn:aws:iam::000000000000:role/lambda-testing \
+      --architectures arm64 \
+      --logging-config LogFormat=JSON \
+      --runtime python3.11 \
+      --handler calculation.distance.lambda_handler \
+      --zip-file fileb://dist/function.zip \
+      --dead-letter-config TargetArn=arn:aws:sqs:{env:AWS_DEFAULT_REGION}:000000000000:lambda-testing-dlq
+  """,
+]
+eventbridge = [
+  "awslocal events create-event-bus --name lambda-testing",
+  """
+  awslocal events put-rule \
+    --name lambda-testing-event-rule \
+    --state ENABLED \
+    --event-bus-name lambda-testing \
+    --event-pattern '{{"source": ["custom.cli"], "detail-type": ["coordinate"]}}'
+  """,
+  """
+  awslocal events put-targets \
+    --rule lambda-testing-event-rule \
+    --event-bus-name lambda-testing \
+    --targets '{{
+      "Id": "lambda-testing-event-rule-1",
+      "Arn": "arn:aws:lambda:{env:AWS_DEFAULT_REGION}:000000000000:function:lambda-testing",
+      "DeadLetterConfig": {{
+        "Arn": "arn:aws:sqs:{env:AWS_DEFAULT_REGION}:000000000000:lambda-testing-dlq"
+      }}
+    }}'
+  """,
+]
+dynamodb = [
+  """
+  awslocal dynamodb create-table \
+    --table-name Distance \
+    --attribute-definitions AttributeName=Name,AttributeType=S \
+    --key-schema AttributeName=Name,KeyType=HASH \
+    --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5
+  """,
+  """
+  awslocal dynamodb put-item \
+    --table-name Distance \
+    --item '{{
+      "Name": {{
+        "S": "Distance"
+      }},
+      "Distance": {{
+        "N": "0"
+      }}
+    }}'
+  """,
+]
+
+[tool.hatch.envs.default.env-vars]
+AWS_ACCESS_KEY_ID = "XXXXXXXXXXXXXXX"
+AWS_SECRET_ACCESS_KEY = "YYYYYYYYYYYYYYYYY"
+AWS_DEFAULT_REGION = "us-east-1"
+LOCALSTACK_HOST = "localhost.localstack.cloud:4566"
+LOG_LEVEL = "DEBUG"
+BOTO_LOG_LEVEL = "DEBUG"
+
+[tool.hatch.envs.lint]
+[tool.hatch.envs.lint.scripts]
+typing = [
+  "pyright {args:calculation tests}",
+]
+check = [
+  "ruff check --diff --quiet {args:calculation tests}",
+]
+fmt = [
+  "ruff format --diff --quiet {args:calculation tests}",
+]
+all = ["check", "fmt", "typing"]
+
+[tool.hatch.envs.test]
+[[tool.hatch.envs.test.matrix]]
+python = ["3.10", "3.11", "3.12"]
+
+[tool.hatch.envs.test.scripts]
+all = ["test", "print"]
+unit = "coverage run -am pytest -m unit"
+integration = "coverage run -am pytest -m integration"
+infrastructure = "coverage run -am pytest -m infrastructure"
+test = "coverage run -am pytest"
+print = "coverage report"
+
+[tool.ruff]
+line-length = 120
+select = [
+  "A",
+  "ARG",
+  "B",
+  "C",
+  "DTZ",
+  "E",
+  "EM",
+  "F",
+  "FBT",
+  "I",
+  "ICN",
+  "ISC",
+  "N",
+  "PLC",
+  "PLE",
+  "PLR",
+  "PLW",
+  "Q",
+  "RUF",
+  "S",
+  "T",
+  "TID",
+  "UP",
+  "W",
+  "YTT",
+]
+ignore = ["ISC001"]
+exclude = [
+  ".git",
+  ".github",
+  ".ruff_cache",
+  ".venv",
+  "__pycache__",
+  "build",
+  "dist",
+  ".vscode",
+]
+
+[tool.ruff.per-file-ignores]
+"tests/**/*" = [
+  "PLR2004",
+  "S101",
+  "TID252",
+]
+"example.py" = ["T201"]
+
+[tool.black]
+line-length = 120
+skip-string-normalization = true
+
+[tool.ruff.isort]
+known-first-party = ["calculation"]
+
+[tool.isort]
+profile = "black"
+src_paths = ["calculation", "tests"]
+honor_noqa = true
+
+[tool.pyright]
+include = ["calculation"]
+exclude = ["**/__pycache__"]
+reportMissingImports = true
+
+[tool.coverage.run]
+source_pkgs = ["calculation"]
+branch = true
+omit = [
+  "calculation/__about__.py",
+  "calculation/__init__.py",
+]
+
+[tool.coverage.paths]
+lambda-example = ["calculation"]
+tests = ["tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
+
+[tool.pytest.ini_options]
+markers = [
+  "unit: test single method and function",
+  "integration: test multple method and function together",
+  "infrastructure: test method and function against localstack",
+]
+minversion = "7.4"
+addopts = "-ra"
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = [
+  "ignore::DeprecationWarning",
+]
